@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Razorpay Payment</title>
+  </head>
+  <body>
+    <h1>Razorpay Payment Gateway Integration</h1>
+    <form id="payment-form">
+      <label for="amount">Amount:</label>
+      <input type="number" id="amount" name="amount" required />
+      <button type="button" onclick="payNow()">Pay Now</button>
+    </form>
+
+    <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+    <script>
+      async function payNow() {
+        let paymentId;
+        let paymentMethod;
+        const amount = document.getElementById("amount").value;
+
+        // Create order by calling the server endpoint
+        const response = await fetch("/order", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            amount: amount * 100,
+          }),
+        });
+
+        const order = await response.json();
+
+        // Open Razorpay Checkout
+        const options = {
+          key: "rzp_test_sFRstxroYklOA1",
+          amount: order.amount,
+          currency: order.currency,
+          name: "amit",
+          order_id: order.order_id,
+          handler: (response) => {
+            console.log("succeeded");
+            console.log(response);
+            paymentId = response.razorpay_payment_id;
+
+            const succeeded =
+              crypto
+                .HmacSHA256(
+                  `${orderId}|${response.razorpay_payment_id}`,
+                  "hrQtyvy5vWv2wwPryZGBj5p8"
+                )
+                .toString() === response.razorpay_signature;
+
+            if (succeeded) {
+              handlePayment("succeeded", {
+                orderId,
+                paymentId,
+                signature: response.razorpay_signature,
+              });
+            } else {
+              handlePayment("failed", {
+                orderId,
+                paymentId: response.razorpay_payment_id,
+              });
+            }
+          },
+          modal: {
+            confirm_close: true,
+            ondismiss: async (reason) => {
+              const {
+                reason: paymentReason,
+                field,
+                step,
+                code,
+              } = reason && reason.error ? reason.error : {};
+
+              if (reason === undefined) {
+                console.log("cancelled");
+                handlePayment("Cancelled");
+              } else if (reason === "timeout") {
+                console.log("timedout");
+                handlePayment("timedout");
+              } else {
+                console.log("failed");
+                handlePayment("failed", {
+                  paymentReason,
+                  field,
+                  step,
+                  code,
+                });
+              }
+            },
+          },
+          retry: {
+            enabled: false,
+          },
+          timeout: 900,
+          theme: {
+            color: "",
+          },
+        };
+        const rzp = new Razorpay(options);
+        rzp.on("payment.submit", (response) => {
+          paymentMethod = response.method;
+        });
+
+        // To get payment id in case of failed transaction.
+        rzp.on("payment.failed", (response) => {
+          paymentId = response.error.metadata.payment_id;
+        });
+        rzp.open();
+      }
+    </script>
+  </body>
+</html>
